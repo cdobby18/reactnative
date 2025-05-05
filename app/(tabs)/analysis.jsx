@@ -1,24 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Image, Alert, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
+import { Camera } from 'expo-camera';
 import axios from 'axios';
 import CustomButton from '../../components/CustomButton';
 
-// Base URL for the backend
-const BASE_URL = 'http://192.168.1.197:8000'; // Replace with your actual IP
+const BASE_URL = 'http://192.168.1.197:8000';
 
+const windowHeight = Dimensions.get('window').height;
 
 const Feedback = ({ onUploadAnother, feedback, score, exercise }) => (
   <View className="my-2 px-2 space-y-2">
     <Text className="text-2xl text-[#FF3A4A] font-semibold">
       SCORE: Your score is {score || 'N/A'}, {score < 85 ? 'Needs Improvement' : 'Good Form'}.
     </Text>
-    <View className="w-full h-1 bg-white my-4" />
-    <Text className="text-xl font-bold text-[#FF3A4A] text-center">RADAR CHART</Text>
-    <View className="bg-white/20 p-5 rounded-lg items-center w-full self-center">
-      <Image source={require('../../assets/images/radarchart.png')} className="w-64 h-64" />
-    </View>
     <View className="w-full h-1 bg-white my-4" />
     <Text className="text-xl font-bold text-[#FF3A4A] text-center mt-4">VIDEO ANALYSIS FEEDBACK</Text>
     <View className="bg-white/20 p-5 rounded-lg items-center w-full self-center">
@@ -34,20 +29,23 @@ const Feedback = ({ onUploadAnother, feedback, score, exercise }) => (
   </View>
 );
 
+
 const Analysis = () => {
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
-  const [hasPermission, setHasPermission] = useState(false);
+  const [hasPermission, setHasPermission] = useState(null);
   const [feedback, setFeedback] = useState('');
   const [score, setScore] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const cameraRef = useRef(null);
 
   useEffect(() => {
+    console.log('Camera Module:', Camera); // Debug: Check if Camera is imported
+    console.log('Camera Constants:', Camera?.Constants); // Debug: Check if Constants exists
     (async () => {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      console.log('📸 Camera Permission Status:', status);  // Check if permissions are granted
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      console.log('📸 Camera Permission Status:', status);
       setHasPermission(status === 'granted');
-      
       if (status !== 'granted') {
         Alert.alert('Camera Permission Denied', 'Please allow camera access in settings.');
       }
@@ -56,13 +54,26 @@ const Analysis = () => {
 
   const setExercise = async (exercise) => {
     try {
-      await axios.get(`${BASE_URL}/set_exercise/${exercise}`);
-      console.log(`Exercise set to ${exercise}`);
+      const response = await axios.get(`${BASE_URL}/set_exercise/${exercise}`);
+      console.log(`Exercise set to ${exercise}`, response.data);
       setSelectedExercise(exercise);
     } catch (error) {
-      console.error('Error setting exercise:', error);
-      Alert.alert('Error', 'Failed to set exercise type.');
+      console.error('Error setting exercise:', error.message);
+      Alert.alert('Error', 'Failed to set exercise type. Is the backend running?');
     }
+  };
+
+  const captureFrame = async () => {
+    if (cameraRef.current) {
+      try {
+        const photo = await cameraRef.current.takePictureAsync({ base64: true });
+        return photo.base64;
+      } catch (error) {
+        console.error('Error capturing frame:', error.message);
+        return null;
+      }
+    }
+    return null;
   };
 
   const toggleRecording = async () => {
@@ -70,35 +81,65 @@ const Analysis = () => {
       Alert.alert('Error', 'Please select an exercise first.');
       return;
     }
-  
+
     try {
-      const action = isRecording ? 'stop' : 'start';
-      const response = await axios.post(`${BASE_URL}/recording`, {
-        action,
-        exercise: selectedExercise,
-      });
-  
-      console.log(`${action} recording response:`, response.data);
-  
-      if (action === 'start') {
+      if (!isRecording) {
         setIsRecording(true);
+        const response = await axios.post(`${BASE_URL}/recording`, {
+          action: 'start',
+          exercise: selectedExercise,
+        });
+        console.log('Started recording:', response.data);
       } else {
         setIsRecording(false);
+        const response = await axios.post(`${BASE_URL}/recording`, {
+          action: 'stop',
+          exercise: selectedExercise,
+        });
+        console.log('Stopped recording:', response.data);
+
+        const frame = await captureFrame();
+        if (frame) {
+          const frameResponse = await axios.post(`${BASE_URL}/process_frame`, {
+            image: frame,
+            exercise: selectedExercise,
+          });
+          setFeedback(frameResponse.data.feedback || 'No feedback available');
+          setScore(frameResponse.data.score || 80);
+        } else {
+          console.error('No frame captured for analysis');
+          setFeedback('No frame captured for analysis');
+          setScore(0);
+        }
+
         setShowFeedback(true);
-        
-        // After recording stops, fetch feedback from /pose_data
-        const feedbackResponse = await axios.get(`${BASE_URL}/pose_data`);
-        console.log('Feedback Response:', feedbackResponse.data); // You can log the response to check the data format
-  
-        setFeedback(feedbackResponse.data.feedback);  // Set the feedback in the state
-        setScore(feedbackResponse.data.score); // Assuming the backend sends a 'score' field
       }
     } catch (error) {
-      console.error('Error toggling recording:', error);
-      Alert.alert('Error', 'Failed to control recording.');
+      console.error('Error toggling recording:', error.message);
+      Alert.alert('Error', 'Failed to control recording. Check if backend is running and reachable.');
+      setIsRecording(false);
     }
   };
-  
+
+  if (hasPermission === null) {
+    return (
+      <SafeAreaView className="bg-black h-full">
+        <View className="flex-1 justify-center items-center">
+          <Text className="text-white">Requesting camera permissions...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (hasPermission === false) {
+    return (
+      <SafeAreaView className="bg-black h-full">
+        <View className="flex-1 justify-center items-center">
+          <Text className="text-white">No access to camera. Please enable in settings.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="bg-black h-full">
@@ -114,6 +155,21 @@ const Analysis = () => {
           {!showFeedback ? (
             <>
               <Text className="text-xl text-[#FF3A4A] font-bold text-center">VIDEO RECORD</Text>
+              {hasPermission && selectedExercise && Camera?.Constants ? (
+                <View style={{ width: '100%', height: windowHeight * 0.7, aspectRatio: 16 / 9 }}>
+                  <Camera
+                    ref={cameraRef}
+                    style={{ width: '100%', height: '100%' }}
+                    type={Camera.Constants.Type.back}
+                  />
+                </View>
+              ) : (
+                <View style={{ width: '100%', height: windowHeight * 0.7, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }}>
+                  <Text className="text-white">
+                    {selectedExercise ? 'Camera not available. Ensure camera module is loaded.' : 'Select an exercise to start recording.'}
+                  </Text>
+                </View>
+              )}
               <View className="items-center space-y-6">
                 <View className="flex-row space-x-8 mt-5">
                   {[

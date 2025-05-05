@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Powerlift",
+    "slug": "Powerlift",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "powerlift",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "package": "com.jsm.powerlift"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "dependencies": {
+      "expo": "^51.0.14",
+      "@expo/cli": "^0.18.29",
+      "@expo/metro-config": "^0.18.11",
+      "expo-camera": "^15.0.15",
+      "expo-router": "^3.5.23",
+      "expo-splash-screen": "^0.27.5",
+      "expo-font": "^12.0.9"
+    }
+  }
+}
