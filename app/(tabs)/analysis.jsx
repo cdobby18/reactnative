@@ -5,8 +5,6 @@ import { Camera } from 'expo-camera';
 import axios from 'axios';
 import CustomButton from '../../components/CustomButton';
 
-const BASE_URL = 'http://192.168.1.197:8000';
-
 const windowHeight = Dimensions.get('window').height;
 
 const Feedback = ({ onUploadAnother, feedback, score, exercise }) => (
